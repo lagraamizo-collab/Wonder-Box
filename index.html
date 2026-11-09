@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wonder-Box Pong</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #10131d;
+      color: #f5f7ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: radial-gradient(ellipse at top, #202943 0%, #10131d 65%);
+    }
+
+    .game { width: min(900px, 100%); }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    h1 { margin: 0; font-size: clamp(1.4rem, 4vw, 2rem); letter-spacing: .08em; }
+
+    .scoreboard {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-variant-numeric: tabular-nums;
+      font-size: clamp(1.2rem, 4vw, 1.8rem);
+      font-weight: 700;
+    }
+
+    .scoreboard span { min-width: 1.5ch; text-align: center; }
+    .scoreboard .divider { color: #7f8ba8; font-size: .8em; }
+
+    canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border: 1px solid #52617f;
+      border-radius: 12px;
+      background: #080b12;
+      box-shadow: 0 18px 60px #0007;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px 20px;
+      margin-top: 14px;
+      color: #b7c1d8;
+      font-size: .92rem;
+    }
+
+    .controls strong { color: #f5f7ff; }
+
+    button {
+      padding: 8px 14px;
+      border: 1px solid #657493;
+      border-radius: 8px;
+      background: #202943;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button:hover { background: #2b3856; }
+    button:focus-visible { outline: 3px solid #6ce4d0; outline-offset: 2px; }
+
+    @media (max-width: 520px) {
+      body { padding: 14px; }
+      header { align-items: flex-start; flex-direction: column; }
+      .controls { font-size: .82rem; }
+    }
+  </style>
+</head>
+<body>
+  <main class="game">
+    <header>
+      <h1>WONDER-BOX PONG</h1>
+      <div class="scoreboard" aria-label="Score">
+        <span id="player-score" aria-label="Player score">0</span>
+        <span class="divider" aria-hidden="true">:</span>
+        <span id="computer-score" aria-label="Computer score">0</span>
+      </div>
+    </header>
+
+    <canvas id="pong" width="960" height="540" aria-label="Pong game. Move your paddle with the mouse or up and down arrow keys."></canvas>
+
+    <div class="controls">
+      <span>Move: <strong>mouse</strong> or <strong>↑ / ↓</strong></span>
+      <span>Pause: <strong>Space</strong></span>
+      <button id="restart" type="button">New game</button>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const canvas = document.querySelector("#pong");
+      const ctx = canvas.getContext("2d");
+      const playerScoreEl = document.querySelector("#player-score");
+      const computerScoreEl = document.querySelector("#computer-score");
+      const paddle = { width: 14, height: 100, speed: 7 };
+      const player = { x: 34, y: 0, score: 0 };
+      const computer = { x: canvas.width - 34 - paddle.width, y: 0, score: 0 };
+      const ball = { x: 0, y: 0, radius: 9, vx: 5, vy: 3 };
+      const keys = new Set();
+      let paused = false;
+      let serveTimer = 0;
+      let lastTime = 0;
+
+      function centerPaddles() {
+        player.y = (canvas.height - paddle.height) / 2;
+        computer.y = player.y;
+      }
+
+      function serve(direction = Math.random() < 0.5 ? -1 : 1) {
+        ball.x = canvas.width / 2;
+        ball.y = canvas.height / 2;
+        const angle = (Math.random() * 0.7 - 0.35);
+        const speed = 5;
+        ball.vx = Math.cos(angle) * speed * direction;
+        ball.vy = Math.sin(angle) * speed;
+        serveTimer = 35;
+      }
+
+      function updateScore() {
+        playerScoreEl.textContent = player.score;
+        computerScoreEl.textContent = computer.score;
+      }
+
+      function resetGame() {
+        player.score = 0;
+        computer.score = 0;
+        paused = false;
+        updateScore();
+        centerPaddles();
+        serve();
+      }
+
+      function movePlayer(delta) {
+        if (keys.has("ArrowUp")) player.y -= paddle.speed * delta;
+        if (keys.has("ArrowDown")) player.y += paddle.speed * delta;
+        player.y = Math.max(0, Math.min(canvas.height - paddle.height, player.y));
+      }
+
+      function moveComputer(delta) {
+        // The computer tracks the ball, but its limited speed leaves room to outplay it.
+        const target = ball.y - paddle.height / 2;
+        const difference = target - computer.y;
+        const maxStep = 4.4 * delta;
+        computer.y += Math.max(-maxStep, Math.min(maxStep, difference));
+        computer.y = Math.max(0, Math.min(canvas.height - paddle.height, computer.y));
+      }
+
+      function hitsPaddle(p) {
+        return ball.x + ball.radius > p.x &&
+          ball.x - ball.radius < p.x + paddle.width &&
+          ball.y + ball.radius > p.y &&
+          ball.y - ball.radius < p.y + paddle.height;
+      }
+
+      function bounceFromPaddle(p, direction) {
+        const relativeHit = (ball.y - (p.y + paddle.height / 2)) / (paddle.height / 2);
+        const angle = relativeHit * (Math.PI / 3);
+        const speed = Math.min(10, Math.hypot(ball.vx, ball.vy) + 0.35);
+        ball.vx = Math.cos(angle) * speed * direction;
+        ball.vy = Math.sin(angle) * speed;
+        ball.x = direction > 0 ? p.x + paddle.width + ball.radius : p.x - ball.radius;
+      }
+
+      function update(delta) {
+        movePlayer(delta);
+        moveComputer(delta);
+        if (serveTimer > 0) {
+          serveTimer -= delta;
+          return;
+        }
+
+        ball.x += ball.vx * delta;
+        ball.y += ball.vy * delta;
+
+        if (ball.y - ball.radius <= 0 || ball.y + ball.radius >= canvas.height) {
+          ball.vy *= -1;
+          ball.y = Math.max(ball.radius, Math.min(canvas.height - ball.radius, ball.y));
+        }
+
+        if (ball.vx < 0 && hitsPaddle(player)) bounceFromPaddle(player, 1);
+        if (ball.vx > 0 && hitsPaddle(computer)) bounceFromPaddle(computer, -1);
+
+        if (ball.x + ball.radius < 0) {
+          computer.score += 1;
+          updateScore();
+          serve(1);
+        } else if (ball.x - ball.radius > canvas.width) {
+          player.score += 1;
+          updateScore();
+          serve(-1);
+        }
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#080b12";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = "#29334a";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([12, 14]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width / 2, 0);
+        ctx.lineTo(canvas.width / 2, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = "#6ce4d0";
+        ctx.fillRect(player.x, player.y, paddle.width, paddle.height);
+        ctx.fillStyle = "#ffbd69";
+        ctx.fillRect(computer.x, computer.y, paddle.width, paddle.height);
+
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#f5f7ff";
+        ctx.fill();
+
+        if (paused) {
+          ctx.fillStyle = "#080b12aa";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#f5f7ff";
+          ctx.textAlign = "center";
+          ctx.font = "700 34px system-ui, sans-serif";
+          ctx.fillText("PAUSED", canvas.width / 2, canvas.height / 2);
+        }
+      }
+
+      function frame(time) {
+        const delta = Math.min((time - lastTime) / 16.67 || 1, 2);
+        lastTime = time;
+        if (!paused) update(delta);
+        draw();
+        requestAnimationFrame(frame);
+      }
+
+      canvas.addEventListener("pointermove", (event) => {
+        const bounds = canvas.getBoundingClientRect();
+        player.y = ((event.clientY - bounds.top) / bounds.height) * canvas.height - paddle.height / 2;
+        player.y = Math.max(0, Math.min(canvas.height - paddle.height, player.y));
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if (["ArrowUp", "ArrowDown", " "].includes(event.key)) event.preventDefault();
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") keys.add(event.key);
+        if (event.code === "Space" && !event.repeat) paused = !paused;
+      });
+      window.addEventListener("keyup", (event) => keys.delete(event.key));
+      window.addEventListener("blur", () => keys.clear());
+      document.querySelector("#restart").addEventListener("click", resetGame);
+
+      centerPaddles();
+      serve();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
