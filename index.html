@@ -71,6 +71,21 @@
 
     .controls strong { color: #f5f7ff; }
 
+    .computer-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    select {
+      padding: 6px 9px;
+      border: 1px solid #657493;
+      border-radius: 7px;
+      background: #202943;
+      color: inherit;
+      font: inherit;
+    }
+
     button {
       padding: 8px 14px;
       border: 1px solid #657493;
@@ -81,8 +96,8 @@
       cursor: pointer;
     }
 
-    button:hover { background: #2b3856; }
-    button:focus-visible { outline: 3px solid #6ce4d0; outline-offset: 2px; }
+    button:hover, select:hover { background: #2b3856; }
+    button:focus-visible, select:focus-visible { outline: 3px solid #6ce4d0; outline-offset: 2px; }
 
     @media (max-width: 520px) {
       body { padding: 14px; }
@@ -107,6 +122,13 @@
     <div class="controls">
       <span>Move: <strong>mouse</strong> or <strong>↑ / ↓</strong></span>
       <span>Pause: <strong>Space</strong></span>
+      <label class="computer-control" for="difficulty">Computer:
+        <select id="difficulty" aria-label="Computer difficulty">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
       <button id="restart" type="button">New game</button>
     </div>
   </main>
@@ -117,14 +139,22 @@
       const ctx = canvas.getContext("2d");
       const playerScoreEl = document.querySelector("#player-score");
       const computerScoreEl = document.querySelector("#computer-score");
-      const paddle = { width: 14, height: 100, speed: 7 };
+      const difficultySelect = document.querySelector("#difficulty");
+      const paddle = { width: 14, height: 100, speed: 9 };
       const player = { x: 34, y: 0, score: 0 };
-      const computer = { x: canvas.width - 34 - paddle.width, y: 0, score: 0 };
+      const computer = { x: canvas.width - 34 - paddle.width, y: 0 };
       const ball = { x: 0, y: 0, radius: 9, vx: 5, vy: 3 };
       const keys = new Set();
+      const computerSettings = {
+        easy: { speed: 3.2, reaction: 0.62, error: 58 },
+        normal: { speed: 5.2, reaction: 0.82, error: 28 },
+        hard: { speed: 7.2, reaction: 1, error: 8 }
+      };
       let paused = false;
       let serveTimer = 0;
       let lastTime = 0;
+      let aiTargetY = canvas.height / 2;
+      let aiTargetRefresh = 0;
 
       function centerPaddles() {
         player.y = (canvas.height - paddle.height) / 2;
@@ -134,11 +164,12 @@
       function serve(direction = Math.random() < 0.5 ? -1 : 1) {
         ball.x = canvas.width / 2;
         ball.y = canvas.height / 2;
-        const angle = (Math.random() * 0.7 - 0.35);
+        const angle = Math.random() * 0.7 - 0.35;
         const speed = 5;
         ball.vx = Math.cos(angle) * speed * direction;
         ball.vy = Math.sin(angle) * speed;
         serveTimer = 35;
+        aiTargetRefresh = 0;
       }
 
       function updateScore() {
@@ -161,11 +192,32 @@
         player.y = Math.max(0, Math.min(canvas.height - paddle.height, player.y));
       }
 
+      // Predict where the ball will reach the computer's side, reflecting off the top/bottom walls.
+      function predictBallIntercept() {
+        if (ball.vx <= 0) return canvas.height / 2;
+        const travelTime = (computer.x - ball.x) / ball.vx;
+        const span = canvas.height - ball.radius * 2;
+        const unfolded = ball.y - ball.radius + ball.vy * travelTime;
+        const folded = ((unfolded % (span * 2)) + span * 2) % (span * 2);
+        return ball.radius + (folded <= span ? folded : span * 2 - folded);
+      }
+
       function moveComputer(delta) {
-        // The computer tracks the ball, but its limited speed leaves room to outplay it.
-        const target = ball.y - paddle.height / 2;
-        const difference = target - computer.y;
-        const maxStep = 4.4 * delta;
+        const settings = computerSettings[difficultySelect.value];
+        aiTargetRefresh -= delta;
+
+        // Only track the ball while it approaches; otherwise drift back toward the center.
+        if (ball.vx > 0) {
+          if (aiTargetRefresh <= 0) {
+            aiTargetY = predictBallIntercept() - paddle.height / 2 + (Math.random() - 0.5) * settings.error;
+            aiTargetRefresh = 7;
+          }
+        } else {
+          aiTargetY = canvas.height / 2 - paddle.height / 2;
+        }
+
+        const difference = aiTargetY - computer.y;
+        const maxStep = settings.speed * settings.reaction * delta;
         computer.y += Math.max(-maxStep, Math.min(maxStep, difference));
         computer.y = Math.max(0, Math.min(canvas.height - paddle.height, computer.y));
       }
