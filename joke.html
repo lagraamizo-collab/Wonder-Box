@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#17142b">
+  <title>مولّد النكات | Wonder-Box</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; color: #f7f4ff; background: #17142b; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 22px; background: radial-gradient(circle at 50% 15%, #39305e, #17142b 65%); }
+    main { width: min(620px, 100%); padding: clamp(24px, 6vw, 48px); border: 1px solid #ffffff24; border-radius: 22px; background: #211d3be8; box-shadow: 0 24px 80px #08061180; text-align: center; }
+    .emoji { font-size: 3rem; }
+    h1 { margin: 8px 0; font-size: clamp(1.8rem, 6vw, 2.6rem); }
+    .intro, footer { color: #c7c1dc; }
+    .joke { min-height: 160px; display: grid; align-content: center; gap: 12px; margin: 28px 0 14px; padding: 24px; border-radius: 14px; background: #111020; font-size: clamp(1.1rem, 3vw, 1.35rem); line-height: 1.7; }
+    #setup { font-weight: 650; }
+    #delivery { color: #d3c7ff; }
+    #status { min-height: 1.5em; color: #c7c1dc; font-size: .9rem; }
+    .actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+    button { min-height: 46px; padding: 10px 18px; border: 1px solid #a99ae8; border-radius: 10px; background: #7965cf; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+    button.secondary { background: transparent; }
+    button:hover:not(:disabled) { filter: brightness(1.12); }
+    button:focus-visible { outline: 3px solid #f6d96b; outline-offset: 3px; }
+    button:disabled { cursor: wait; opacity: .65; }
+    footer { margin-top: 24px; font-size: .8rem; }
+    footer a { color: #d3c7ff; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="emoji" aria-hidden="true">🎭</div>
+    <h1>مولّد النكات</h1>
+    <p class="intro">اضغط لتحصل على نكتة عشوائية وتشاركها مع أصدقائك.</p>
+    <section class="joke" aria-live="polite" aria-atomic="true" aria-label="النكتة">
+      <div id="setup">جارٍ تحميل نكتة...</div>
+      <div id="delivery"></div>
+    </section>
+    <p id="status" role="status"></p>
+    <div class="actions">
+      <button id="new-joke" type="button">نكتة أخرى 😄</button>
+      <button id="copy-joke" class="secondary" type="button" disabled>نسخ النكتة</button>
+    </div>
+    <footer>النكات من <a href="https://jokeapi.dev/" target="_blank" rel="noopener noreferrer">JokeAPI</a> مع تفعيل الوضع الآمن.</footer>
+  </main>
+  <script>
+    (() => {
+      const setup = document.querySelector("#setup");
+      const delivery = document.querySelector("#delivery");
+      const status = document.querySelector("#status");
+      const newButton = document.querySelector("#new-joke");
+      const copyButton = document.querySelector("#copy-joke");
+      let currentJoke = "";
+
+      async function loadJoke() {
+        newButton.disabled = true;
+        copyButton.disabled = true;
+        setup.textContent = "جارٍ البحث عن نكتة...";
+        delivery.textContent = "";
+        status.textContent = "";
+        currentJoke = "";
+        try {
+          const response = await fetch("https://v2.jokeapi.dev/joke/Any?safe-mode", { headers: { Accept: "application/json" } });
+          if (!response.ok) throw new Error("تعذّر الاتصال بخدمة النكات.");
+          const joke = await response.json();
+          if (joke.error) throw new Error("لم يتم العثور على نكتة.");
+          if (joke.type === "twopart") {
+            setup.textContent = joke.setup;
+            delivery.textContent = joke.delivery;
+            currentJoke = `${joke.setup}\n${joke.delivery}`;
+          } else if (joke.type === "single") {
+            setup.textContent = joke.joke;
+            currentJoke = joke.joke;
+          } else throw new Error("استجابة غير متوقعة من خدمة النكات.");
+          status.textContent = "إليك نكتتك!";
+          copyButton.disabled = false;
+        } catch (error) {
+          setup.textContent = "لم نتمكن من تحميل نكتة الآن.";
+          delivery.textContent = "ت��قق من اتصال الإنترنت ثم حاول مرة أخرى.";
+          status.textContent = "قد تكون خدمة النكات غير متاحة مؤقتًا.";
+          console.error(error);
+        } finally { newButton.disabled = false; }
+      }
+
+      newButton.addEventListener("click", loadJoke);
+      copyButton.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(currentJoke);
+          status.textContent = "تم نسخ النكتة!";
+        } catch { status.textContent = "تعذّر الوصول إلى الحافظة في هذا المتصفح."; }
+      });
+      loadJoke();
+    })();
+  </script>
+</body>
+</html>
